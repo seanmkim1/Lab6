@@ -1,0 +1,164 @@
+---
+title: "Lab6Submission"
+author: "Sean Kim"
+format:
+  html:
+    embed-resources: true
+---
+
+```{r}
+library(dplyr)
+library(data.table)
+library(tidyverse)
+library(tidytext)
+library(ggplot2)
+
+medscript_raw <- fread("https://raw.githubusercontent.com/USCbiostats/data-science-data/master/00_mtsamples/mtsamples.csv")
+```
+
+## **Question 1: What specialties do we have?**
+
+```{r}
+new_column_names <- c("EntryID", "Description", "MedicalSpecialty", "SampleName", "TranscriptionSubjective", "Keywords")
+
+medscript_raw <- rename(medscript_raw, !!!setNames(names(medscript_raw), new_column_names))
+
+num_categories <- medscript_raw %>%
+  count(MedicalSpecialty, sort = TRUE)
+num_categories
+
+columnSpec <-ggplot(num_categories, aes(x = MedicalSpecialty, y = n)) + 
+  geom_col()
+
+columnSpec + coord_flip()
+```
+
+There are 41 distinct medical specialties, but looking in depth, there are actually 38 medical specialties (removing the entries for "SOAP/Chart", "Discharge Summary", "Office Notes", "Letters", and "medical_specialty". They are not evenly distributed, with a high frequency of "surgery", in particular.
+
+## Question 2: Tokenize
+
+```{r}
+medscript_char <- medscript_raw%>%
+  select(2:6) %>% 
+  unnest_tokens(token, TranscriptionSubjective) %>% 
+  count(token, sort = TRUE) %>% 
+  top_n(20, n)
+
+PlotTokens <- ggplot(medscript_char, aes(n, fct_reorder(token, n))) + 
+  geom_col()
+
+PlotTokens + coord_flip()
+```
+
+## Question 3: Remove Stopwords
+
+```{r}
+stop_words
+
+Medscript <- medscript_raw %>%
+  unnest_tokens(token, TranscriptionSubjective) %>%
+  filter(!str_detect(token, "\\d+")) %>%
+  anti_join(stop_words, by = c("token" = "word")) %>%
+  count(token, sort = TRUE)
+Medscript
+```
+
+After getting rid of numbers and stop_words, the remaining frequently used terms are definitely more medically related, however some still don't give much information (patient, normal, procedure, noted, time).
+
+## Question 4 - Bi-grams and Tri-grams
+
+```{r}
+medscript_bigram <- medscript_raw %>%
+  unnest_tokens(ngram, TranscriptionSubjective, token = "ngrams", n = 2) %>%
+  separate(ngram, into = c("word1", "word2"), sep = " ") %>%
+  select(word1, word2) %>%
+  count(word1, word2, sort = TRUE)%>% 
+  top_n(20, n)
+
+medscript_bigram
+```
+
+```{r}
+medscript_trigram <- medscript_raw %>%
+  unnest_tokens(ngram, TranscriptionSubjective, token = "ngrams", n = 3) %>%
+  separate(ngram, into = c("word1", "word2", "word3"), sep = " ") %>%
+  select(word1, word2, word3) %>%
+  count(word1, word2, word3, sort = TRUE)%>% 
+  top_n(20, n)
+
+medscript_trigram
+```
+
+Bigrams and Trigrams were limited in how informative they were. Many of the top frequency combinations are very common in medical dictation but give no information about the patient's chief complaint.
+
+## Question 5 - Before and after "right"
+
+```{r}
+beforeRight <- medscript_raw %>%
+  unnest_tokens(ngram, TranscriptionSubjective, token = "ngrams", n = 2) %>%
+  separate(ngram, into = c("word1", "word2"), sep = " ") %>%
+  select(word1, word2) %>%
+  filter(word2 == "right") %>%
+  count(word1, sort = TRUE)
+```
+
+```{r}
+afterRight<- medscript_raw %>%
+  unnest_tokens(ngram, TranscriptionSubjective, token = "ngrams", n = 2) %>%
+  separate(ngram, into = c("word1", "word2"), sep = " ") %>%
+  select(word1, word2) %>%
+  filter(word1 == "right") %>%
+  count(word2, sort = TRUE)
+```
+
+```{r}
+beforeRight
+afterRight
+```
+
+## Question 6 - Grouping by Specialty
+
+```{r}
+top_words_by_specialty <- medscript_raw %>%
+  unnest_tokens(word, TranscriptionSubjective) %>%
+  filter(!str_detect(word, "\\d+")) %>%
+  anti_join(stop_words) %>%
+  group_by(MedicalSpecialty, word) %>%
+  summarise(n = n()) %>%
+  top_n(5, n)
+top_words_by_specialty
+```
+
+## Question 7 - Extra - Most common surgeries? 
+
+```{r}
+top_words_surgery <- medscript_raw %>% 
+  select(MedicalSpecialty, SampleName) %>% 
+  filter(MedicalSpecialty == "Surgery", )
+
+top_words_surgery <- medscript_raw %>%
+  unnest_tokens(ngram, SampleName, token = "ngrams", n = 2) %>%
+  filter(MedicalSpecialty == "Surgery", ) %>%
+  anti_join(stop_words, by = c("ngram" = "word")) %>%
+  separate(ngram, into = c("word1", "word2"), sep = " ") %>%
+  select(word1, word2) %>%
+  count(word1, word2, sort = TRUE) %>%
+  top_n(20, wt = n)
+  
+top_words_surgery  
+  
+  
+  unnest_tokens(token, SampleName) %>%
+  filter(!str_detect(token, "\\d+")) %>%
+  anti_join(stop_words, by = c("token" = "word")) %>%
+  count(token, sort = TRUE)
+
+
+unnest_tokens(ngram, TranscriptionSubjective, token = "ngrams", n = 2) %>%
+  separate(ngram, into = c("word1", "word2"), sep = " ") %>%
+  select(word1, word2) %>%
+  count(word1, word2, sort = TRUE)%>% 
+  top_n(20, n)
+```
+
+Searching bigrams under "Surgery" Sample Name, we get a bit more information about some of the more common procedures. For example, we can see cervical discectomy was done 25 times, and heart catheterization was performed 20 times. This reflects potentially an oversampling of neurosurgery and cardiac surgery. It's no surprise that laparoscopic cholecystectomy appears in the top 10, as cholecystectomies are very common in the US.

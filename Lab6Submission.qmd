@@ -147,18 +147,7 @@ top_words_surgery <- medscript_raw %>%
   
 top_words_surgery  
   
-  
-  unnest_tokens(token, SampleName) %>%
-  filter(!str_detect(token, "\\d+")) %>%
-  anti_join(stop_words, by = c("token" = "word")) %>%
-  count(token, sort = TRUE)
 
-
-unnest_tokens(ngram, TranscriptionSubjective, token = "ngrams", n = 2) %>%
-  separate(ngram, into = c("word1", "word2"), sep = " ") %>%
-  select(word1, word2) %>%
-  count(word1, word2, sort = TRUE)%>% 
-  top_n(20, n)
 ```
 
 Searching bigrams under "Surgery" Sample Name, we get a bit more information about some of the more common procedures. For example, we can see cervical discectomy was done 25 times, and heart catheterization was performed 20 times. This reflects potentially an oversampling of neurosurgery and cardiac surgery. It's no surprise that laparoscopic cholecystectomy appears in the top 10, as cholecystectomies are very common in the US.
